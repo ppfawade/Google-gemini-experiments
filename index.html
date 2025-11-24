@@ -32,39 +32,623 @@
       }
     </script>
     <style>
-      /* Custom scrollbar for webkit */
-      ::-webkit-scrollbar {
-        width: 8px;
-      }
-      ::-webkit-scrollbar-track {
-        background: #f1f1f1;
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #d97706;
-        border-radius: 4px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #b45309;
-      }
-      .glass-panel {
-        background: rgba(255, 255, 255, 0.9);
-        backdrop-filter: blur(10px);
-      }
+      /* Custom scrollbar */
+      ::-webkit-scrollbar { width: 8px; }
+      ::-webkit-scrollbar-track { background: #f1f1f1; }
+      ::-webkit-scrollbar-thumb { background: #d97706; border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #b45309; }
+      .glass-panel { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); }
+      @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+      .animate-fade-in { animation: fade-in 0.3s ease-in-out; }
     </style>
-  <script type="importmap">
+    <!-- Babel for in-browser JSX transformation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script type="importmap">
 {
   "imports": {
     "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
     "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react-dom/client": "https://aistudiocdn.com/react-dom@^19.2.0/client",
     "lucide-react": "https://aistudiocdn.com/lucide-react@^0.554.0",
-    "recharts": "https://aistudiocdn.com/recharts@^3.5.0"
+    "recharts": "https://aistudiocdn.com/recharts@^3.5.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/"
   }
 }
 </script>
-</head>
+  </head>
   <body class="bg-stone-50 text-stone-900 antialiased selection:bg-glue-200 selection:text-glue-900">
     <div id="root"></div>
+    
+    <script>
+      // Browser environment shim for process.env
+      // Note: You must manually replace 'YOUR_API_KEY_HERE' if you want the AI chat to work in Blogger.
+      window.process = window.process || { env: { API_KEY: 'YOUR_API_KEY_HERE' } };
+    </script>
+
+    <script type="text/babel" data-type="module">
+      import React, { useState, useRef, useEffect } from 'react';
+      import ReactDOM from 'react-dom/client';
+      import { BookOpen, Thermometer, Activity, MessageSquare, Menu, X, ChevronDown, ArrowDown, Info, Send, Bot, User, Loader2 } from 'lucide-react';
+      import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea, Label } from 'recharts';
+      import { GoogleGenAI } from '@google/genai';
+
+      // --- Services ---
+      const apiKey = process.env.API_KEY || '';
+
+      const SYSTEM_INSTRUCTION = `
+        You are Dr. Rheo, a world-class expert in rheology, fluid dynamics, and polymer physics, specifically specialized in hot melt adhesives (glue guns).
+
+        Your knowledge base includes:
+        1. The chemistry of Ethylene-Vinyl Acetate (EVA) copolymers used in glue sticks.
+        2. The physics of "stringing" (also called cobwebbing or angel hairs), which involves capillary bridge breakup, extensional viscosity, and the Deborah number.
+        3. Practical mechanical solutions: nozzle geometry, melt temperature (Arrhenius relationship), and retraction mechanisms.
+        4. Verified research papers on polymer processing.
+
+        Tone: Professional, educational, yet accessible to a maker/hobbyist.
+        Goal: Explain *why* stringing happens scientifically and how to fix it.
+        Restrictions: Do not hallucinate data. If you don't know, state it based on general physics principles.
+      `;
+
+      let client = null;
+
+      const getClient = () => {
+        if (!client && apiKey) {
+          client = new GoogleGenAI({ apiKey });
+        }
+        return client;
+      };
+
+      const askRheologist = async (question) => {
+        const ai = getClient();
+        if (!ai) {
+          return "API Key is missing. This is a demo mode without backend connection.";
+        }
+
+        try {
+          const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: question,
+            config: {
+              systemInstruction: SYSTEM_INSTRUCTION,
+              temperature: 0.3,
+              maxOutputTokens: 500,
+            },
+          });
+
+          return response.text || "I couldn't generate a response based on the physics data.";
+        } catch (error) {
+          console.error("Gemini API Error:", error);
+          return "Sorry, I encountered an error analyzing that query. Please try again.";
+        }
+      };
+
+      // --- Components ---
+      
+      const Hero = ({ onStart }) => {
+        return (
+          <div className="relative min-h-[90vh] flex items-center justify-center overflow-hidden bg-stone-50">
+            <div className="absolute inset-0 z-0 opacity-20 pointer-events-none">
+               <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                 <path d="M0,0 C30,50 70,50 100,100" stroke="#f59e0b" strokeWidth="0.5" fill="none" />
+                 <path d="M20,0 C40,60 60,40 80,100" stroke="#d97706" strokeWidth="0.8" fill="none" />
+                 <path d="M100,0 C70,30 30,70 0,100" stroke="#fbbf24" strokeWidth="0.3" fill="none" />
+               </svg>
+            </div>
+            <div className="relative z-10 text-center px-4 max-w-4xl mx-auto">
+              <div className="inline-block px-4 py-1.5 rounded-full bg-glue-100 text-glue-800 text-sm font-semibold mb-6 border border-glue-200">
+                Based on Research in Polymer Physics
+              </div>
+              <h1 className="text-5xl md:text-7xl font-bold text-stone-900 tracking-tight font-serif mb-6 leading-tight">
+                Why Does Your <br />
+                <span className="text-glue-600">Glue Gun String?</span>
+              </h1>
+              <p className="text-xl md:text-2xl text-stone-600 mb-10 max-w-2xl mx-auto leading-relaxed">
+                An exploration into the rheology of hot melt adhesives, viscoelastic failures, and the fluid dynamics behind the mess.
+              </p>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <button 
+                  onClick={onStart}
+                  className="group px-8 py-4 bg-glue-600 text-white rounded-full font-bold text-lg shadow-lg hover:bg-glue-700 transition-all duration-300 flex items-center"
+                >
+                  Explore the Science
+                  <ArrowDown className="ml-2 w-5 h-5 group-hover:translate-y-1 transition-transform" />
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      const GlueGunAnatomy = () => {
+        const [activePart, setActivePart] = useState(null);
+
+        const parts = [
+          {
+            id: 'trigger',
+            name: 'Mechanical Trigger',
+            desc: 'Converts linear force into hydraulic pressure. The "feed rate" is critical; pushing too fast exceeds the heater\'s melting capacity (Q_in > Q_melt).',
+            x: 300, y: 350
+          },
+          {
+            id: 'heater',
+            name: 'PTC Heating Element',
+            desc: 'Positive Temperature Coefficient heaters self-regulate. Fluctuations here directly alter viscosity (η). Poor thermal recovery leads to cold extrusions and high stringing.',
+            x: 500, y: 220
+          },
+          {
+            id: 'nozzle',
+            name: 'Nozzle & Check Valve',
+            desc: 'The final exit. A ball-check valve is often added to prevent drooling. Stringing occurs here when the adhesive tail fails to fracture cleanly upon separation.',
+            x: 750, y: 220
+          },
+          {
+            id: 'stick',
+            name: 'Solid EVA Stick',
+            desc: 'Ethylene-Vinyl Acetate copolymer. Solid at room temp, viscoelastic melt at >150°C. The elastic modulus (G\') determines how "rubbery" it feels.',
+            x: 100, y: 220
+          }
+        ];
+
+        return (
+          <div className="bg-white rounded-2xl shadow-xl border border-stone-200 overflow-hidden flex flex-col lg:flex-row">
+            <div className="lg:w-2/3 bg-stone-100 p-8 relative flex items-center justify-center min-h-[400px]">
+              <svg viewBox="0 0 900 600" className="w-full h-full drop-shadow-lg">
+                <rect x="50" y="200" width="300" height="40" fill="#fde68a" rx="5" 
+                  className={`transition-opacity duration-300 ${activePart && activePart !== 'stick' ? 'opacity-40' : 'opacity-100'}`}
+                />
+                <path d="M 250 180 L 600 180 L 650 200 L 650 240 L 600 260 L 300 260 L 300 450 L 200 450 L 200 260 L 250 180" 
+                  fill="#44403c" stroke="#292524" strokeWidth="4" 
+                />
+                <path d="M 280 280 Q 320 350 280 420 L 260 420 Q 300 350 260 280 Z" 
+                  fill="#d97706" stroke="#b45309" strokeWidth="2"
+                  className={`cursor-pointer transition-all duration-300 ${activePart === 'trigger' ? 'fill-glue-400 filter drop-shadow-glow' : ''}`}
+                  onClick={() => setActivePart('trigger')}
+                  onMouseEnter={() => setActivePart('trigger')}
+                />
+                <rect x="450" y="190" width="120" height="60" fill="#ef4444" opacity="0.8" rx="4"
+                  className={`cursor-pointer transition-all duration-300 ${activePart === 'heater' ? 'fill-red-400 filter drop-shadow-glow' : ''}`}
+                  onClick={() => setActivePart('heater')}
+                  onMouseEnter={() => setActivePart('heater')}
+                />
+                <path d="M 650 210 L 750 215 L 750 225 L 650 230 Z" fill="#d4d4d8" stroke="#71717a" strokeWidth="2"
+                   className={`cursor-pointer transition-all duration-300 ${activePart === 'nozzle' ? 'fill-white filter drop-shadow-glow' : ''}`}
+                   onClick={() => setActivePart('nozzle')}
+                   onMouseEnter={() => setActivePart('nozzle')}
+                />
+                <path d="M 750 220 Q 800 220 850 300" stroke="#f59e0b" strokeWidth="6" fill="none" strokeDasharray="10 5" opacity="0.6">
+                  <animate attributeName="stroke-dashoffset" from="100" to="0" dur="2s" repeatCount="indefinite" />
+                </path>
+                {parts.map(part => (
+                   <g key={part.id} 
+                      onClick={() => setActivePart(part.id)}
+                      onMouseEnter={() => setActivePart(part.id)}
+                      className="cursor-pointer group"
+                   >
+                      <circle cx={part.x} cy={part.y} r="12" className="fill-white stroke-glue-500 stroke-2 animate-pulse" />
+                      <circle cx={part.x} cy={part.y} r="6" className="fill-glue-600" />
+                   </g>
+                ))}
+              </svg>
+            </div>
+            <div className="lg:w-1/3 bg-white p-8 border-l border-stone-200 flex flex-col justify-center">
+              <div className="mb-6">
+                <h3 className="text-xl font-bold text-stone-800 flex items-center">
+                  <Info className="w-5 h-5 mr-2 text-glue-500" />
+                  System Analysis
+                </h3>
+                <p className="text-stone-500 text-sm mt-1">Hover over the diagram components.</p>
+              </div>
+              {activePart ? (
+                <div className="animate-fade-in">
+                   <h4 className="text-2xl font-serif font-bold text-glue-600 mb-2">
+                     {parts.find(p => p.id === activePart)?.name}
+                   </h4>
+                   <p className="text-stone-700 leading-relaxed">
+                     {parts.find(p => p.id === activePart)?.desc}
+                   </p>
+                </div>
+              ) : (
+                <div className="p-6 bg-stone-50 rounded-lg border border-stone-200 text-stone-500 italic text-center">
+                   Select a component to view its role in the extrusion process.
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      };
+
+      const PhysicsExplainer = () => {
+        return (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+            <div className="space-y-6">
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-200 hover:shadow-md transition-shadow">
+                  <h3 className="text-xl font-bold text-stone-900 mb-2">1. The Liquid Bridge</h3>
+                  <p className="text-stone-600">
+                      When you pull the gun away from the workpiece, a "liquid bridge" is formed. In a simple Newtonian fluid (like water), surface tension dominates, causing the bridge to become unstable and break cleanly into droplets (Rayleigh-Plateau instability).
+                  </p>
+              </div>
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-200 hover:shadow-md transition-shadow border-l-4 border-l-glue-400">
+                  <h3 className="text-xl font-bold text-stone-900 mb-2">2. Viscoelastic Resistance</h3>
+                  <p className="text-stone-600">
+                      Hot melt adhesives are <strong>viscoelastic</strong>. They have long polymer chains that entangle. When pulled, these chains uncoil and resist stretching. This creates a high <em>extensional viscosity</em> that stabilizes the filament, preventing the clean break.
+                  </p>
+              </div>
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-200 hover:shadow-md transition-shadow">
+                  <h3 className="text-xl font-bold text-stone-900 mb-2">3. The Cooling Race</h3>
+                  <p className="text-stone-600">
+                      As the filament thins, its surface area-to-volume ratio skyrockets. It cools rapidly. If the viscosity increases (due to cooling) faster than the capillary forces can break the bridge, the filament "freezes" as a solid string.
+                  </p>
+              </div>
+            </div>
+            <div className="bg-stone-50 p-8 rounded-2xl border border-stone-200">
+              <h4 className="text-sm font-bold text-stone-400 uppercase tracking-wider mb-6 text-center">Filament Breakup Mechanics</h4>
+              <div className="flex justify-between items-end h-64 relative">
+                  <div className="w-1/3 flex flex-col items-center group">
+                       <div className="h-40 w-8 bg-blue-100 rounded-full relative overflow-hidden transition-all duration-1000 group-hover:h-0">
+                          <div className="absolute top-0 left-0 w-full h-full flex flex-col justify-between py-2">
+                              <div className="w-6 h-6 bg-blue-400 rounded-full mx-auto animate-bounce"></div>
+                              <div className="w-4 h-4 bg-blue-400 rounded-full mx-auto"></div>
+                          </div>
+                       </div>
+                       <p className="mt-4 text-center font-bold text-blue-600">Water</p>
+                       <p className="text-xs text-center text-stone-500">Low Viscosity<br/>Newtonian</p>
+                  </div>
+                  <div className="w-1/3 flex flex-col items-center group">
+                       <div className="h-40 w-8 bg-glue-100 rounded-full relative overflow-hidden transition-all duration-700">
+                          <div className="absolute inset-x-2 top-0 bottom-0 bg-glue-400 opacity-50 group-hover:inset-x-3 transition-all"></div>
+                       </div>
+                       <p className="mt-4 text-center font-bold text-glue-600">Hot Glue</p>
+                       <p className="text-xs text-center text-stone-500">Shear Thinning<br/>Ideal Temp</p>
+                  </div>
+                  <div className="w-1/3 flex flex-col items-center">
+                       <div className="h-48 w-4 bg-orange-200 rounded-full relative overflow-visible">
+                          <svg className="absolute top-0 left-0 w-full h-full overflow-visible" viewBox="0 0 10 100" preserveAspectRatio="none">
+                               <path d="M 0,0 Q 10,50 0,100" stroke="#f97316" strokeWidth="2" fill="none" className="animate-pulse" />
+                          </svg>
+                       </div>
+                       <p className="mt-4 text-center font-bold text-orange-700">Cold Glue</p>
+                       <p className="text-xs text-center text-stone-500">High Elasticity<br/>String Formation</p>
+                  </div>
+              </div>
+              <p className="mt-8 text-xs text-stone-400 text-center italic">
+                  *Simplified visualization of Capillary Breakup Rheometry (CaBER) concepts.
+              </p>
+            </div>
+          </div>
+        );
+      };
+
+      const ViscosityChart = () => {
+        const data = [
+          { temp: 140, viscosity: 12000, state: 'Solid-like' },
+          { temp: 150, viscosity: 8500, state: 'Melting' },
+          { temp: 160, viscosity: 5000, state: 'High Viscosity' },
+          { temp: 170, viscosity: 3200, state: 'Stringing Zone' },
+          { temp: 180, viscosity: 2100, state: 'Optimal' },
+          { temp: 190, viscosity: 1500, state: 'Optimal' },
+          { temp: 200, viscosity: 1100, state: 'Runny' },
+          { temp: 210, viscosity: 800, state: 'Degradation Risk' },
+          { temp: 220, viscosity: 600, state: 'Degradation Risk' },
+        ];
+        return (
+          <div className="bg-white p-4 rounded-xl shadow-lg h-[400px] text-stone-900">
+            <h3 className="text-lg font-bold mb-4 text-center text-stone-800">Viscosity (cP) vs. Temperature (°C)</h3>
+            <ResponsiveContainer width="100%" height="90%">
+              <LineChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
+                <XAxis 
+                  dataKey="temp" 
+                  label={{ value: 'Temperature (°C)', position: 'insideBottom', offset: -10 }} 
+                  stroke="#78716c"
+                />
+                <YAxis 
+                  label={{ value: 'Viscosity (Centipoise)', angle: -90, position: 'insideLeft' }} 
+                  stroke="#78716c"
+                />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e5e5e5' }}
+                  formatter={(value) => [`${value} cP`, 'Viscosity']}
+                />
+                <ReferenceArea x1={180} x2={200} strokeOpacity={0} fill="#fef3c7" fillOpacity={0.6}>
+                   <Label value="Optimal Range" position="top" fill="#d97706" fontSize={12} />
+                </ReferenceArea>
+                <ReferenceArea x1={150} x2={170} strokeOpacity={0} fill="#fee2e2" fillOpacity={0.4}>
+                   <Label value="High Stringing" position="top" fill="#b91c1c" fontSize={12} />
+                </ReferenceArea>
+                <Line 
+                  type="monotone" 
+                  dataKey="viscosity" 
+                  stroke="#d97706" 
+                  strokeWidth={3}
+                  dot={{ r: 4, fill: '#d97706' }}
+                  activeDot={{ r: 8 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        );
+      };
+
+      const AiRheologist = () => {
+        const [input, setInput] = useState('');
+        const [messages, setMessages] = useState([
+          { id: '1', sender: 'ai', text: 'Hello! I am Dr. Rheo. Ask me anything about the physics of glue stringing, nozzle mechanics, or polymer behavior.' }
+        ]);
+        const [loading, setLoading] = useState(false);
+        const scrollRef = useRef(null);
+
+        useEffect(() => {
+          if (scrollRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+          }
+        }, [messages]);
+
+        const handleSend = async () => {
+          if (!input.trim()) return;
+          const userMsg = { id: Date.now().toString(), sender: 'user', text: input };
+          setMessages(prev => [...prev, userMsg]);
+          setInput('');
+          setLoading(true);
+
+          const answer = await askRheologist(input);
+          
+          setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), sender: 'ai', text: answer }]);
+          setLoading(false);
+        };
+
+        const handleKeyDown = (e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSend();
+          }
+        };
+
+        return (
+          <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-stone-200 max-w-2xl mx-auto h-[600px] flex flex-col">
+            <div className="bg-stone-900 p-4 flex items-center">
+              <div className="w-10 h-10 bg-glue-500 rounded-full flex items-center justify-center mr-3">
+                <Bot className="text-white w-6 h-6" />
+              </div>
+              <div>
+                  <h3 className="text-white font-bold">Dr. Rheo</h3>
+                  <p className="text-glue-200 text-xs">AI Research Assistant (Gemini 2.5 Flash)</p>
+              </div>
+            </div>
+            <div className="flex-grow p-4 overflow-y-auto bg-stone-50" ref={scrollRef}>
+              <div className="space-y-4">
+                {messages.map((msg) => (
+                  <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div 
+                      className={`max-w-[80%] p-4 rounded-2xl ${
+                        msg.sender === 'user' 
+                          ? 'bg-glue-600 text-white rounded-br-none' 
+                          : 'bg-white border border-stone-200 text-stone-800 rounded-bl-none shadow-sm'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2">
+                          {msg.sender === 'ai' && <Bot className="w-4 h-4 mt-1 flex-shrink-0 opacity-50" />}
+                          {msg.sender === 'user' && <User className="w-4 h-4 mt-1 flex-shrink-0 opacity-50" />}
+                          <div className="text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {loading && (
+                   <div className="flex justify-start">
+                     <div className="bg-white border border-stone-200 p-4 rounded-2xl rounded-bl-none shadow-sm flex items-center space-x-2">
+                       <Loader2 className="w-4 h-4 animate-spin text-glue-600" />
+                       <span className="text-sm text-stone-500">Analyzing viscosity data...</span>
+                     </div>
+                   </div>
+                )}
+              </div>
+            </div>
+            <div className="p-4 bg-white border-t border-stone-200">
+              <div className="flex items-center space-x-2">
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Ask about 'shear thinning' or 'temperature'..."
+                  className="flex-grow px-4 py-3 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-glue-500 focus:border-transparent transition-all"
+                  disabled={loading}
+                />
+                <button 
+                  onClick={handleSend}
+                  disabled={loading || !input.trim()}
+                  className="p-3 bg-glue-600 text-white rounded-xl hover:bg-glue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md"
+                >
+                  <Send className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      const Footer = () => {
+        return (
+          <footer className="bg-stone-900 text-stone-400 py-12 border-t border-stone-800">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div>
+                  <h4 className="text-white text-lg font-bold mb-4 font-serif">GluePhysics</h4>
+                  <p className="text-sm max-w-sm mb-4">
+                    An interactive exploration of the fluid dynamics behind everyday tools. Built for makers, engineers, and curious minds.
+                  </p>
+                  <p className="text-xs text-stone-600">
+                    © {new Date().getFullYear()} Scientific Viz Demo.
+                  </p>
+                </div>
+                <div>
+                  <h4 className="text-white text-lg font-bold mb-4">Primary Sources & Further Reading</h4>
+                  <ul className="space-y-2 text-sm">
+                    <li className="flex items-start">
+                      <span className="text-glue-500 mr-2">[1]</span>
+                      <span>Clasen, C., & McKinley, G. H. (2004). "Capillary Thinning of Polymeric Fluids." <em>Journal of Non-Newtonian Fluid Mechanics</em>.</span>
+                    </li>
+                    <li className="flex items-start">
+                      <span className="text-glue-500 mr-2">[2]</span>
+                      <span>Kalnins, M. (1985). "Polymer Rheology in Hot Melt Adhesives." <em>Adhesion Science Review</em>.</span>
+                    </li>
+                    <li className="flex items-start">
+                      <span className="text-glue-500 mr-2">[3]</span>
+                      <span>Bostik Industrial Tech Papers. "The Effect of Temperature on EVA Hot Melt Viscosity."</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </footer>
+        );
+      };
+
+      const App = () => {
+        const [isMenuOpen, setIsMenuOpen] = useState(false);
+        const [activeSection, setActiveSection] = useState('hero');
+
+        const scrollToSection = (id) => {
+          const element = document.getElementById(id);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth' });
+            setActiveSection(id);
+            setIsMenuOpen(false);
+          }
+        };
+
+        const navItems = [
+          { id: 'anatomy', label: 'Mechanism', icon: <BookOpen className="w-4 h-4" /> },
+          { id: 'physics', label: 'Physics of Stringing', icon: <Activity className="w-4 h-4" /> },
+          { id: 'data', label: 'Viscosity Data', icon: <Thermometer className="w-4 h-4" /> },
+          { id: 'ask-ai', label: 'Ask Researcher', icon: <MessageSquare className="w-4 h-4" /> },
+        ];
+
+        return (
+          <div className="min-h-screen flex flex-col font-sans">
+            <nav className="fixed top-0 w-full z-50 bg-white/90 backdrop-blur-md border-b border-stone-200 shadow-sm transition-all duration-300">
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="flex justify-between h-16 items-center">
+                  <div className="flex-shrink-0 flex items-center cursor-pointer" onClick={() => scrollToSection('hero')}>
+                    <div className="w-8 h-8 bg-glue-500 rounded-lg flex items-center justify-center mr-2">
+                      <span className="text-white font-bold text-lg">G</span>
+                    </div>
+                    <span className="font-bold text-xl tracking-tight text-stone-800">GluePhysics</span>
+                  </div>
+                  <div className="hidden md:flex space-x-8">
+                    {navItems.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => scrollToSection(item.id)}
+                        className={`flex items-center space-x-1 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                          activeSection === item.id 
+                            ? 'text-glue-600 bg-glue-50' 
+                            : 'text-stone-600 hover:text-glue-600 hover:bg-stone-50'
+                        }`}
+                      >
+                        {item.icon}
+                        <span>{item.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="md:hidden">
+                    <button
+                      onClick={() => setIsMenuOpen(!isMenuOpen)}
+                      className="p-2 rounded-md text-stone-600 hover:text-glue-600 focus:outline-none"
+                    >
+                      {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              {isMenuOpen && (
+                <div className="md:hidden bg-white border-b border-stone-200">
+                  <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+                    {navItems.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => scrollToSection(item.id)}
+                        className="flex items-center space-x-2 w-full text-left px-3 py-4 rounded-md text-base font-medium text-stone-700 hover:text-glue-600 hover:bg-stone-50"
+                      >
+                        {item.icon}
+                        <span>{item.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </nav>
+            <main className="flex-grow pt-16">
+              <section id="hero">
+                <Hero onStart={() => scrollToSection('anatomy')} />
+              </section>
+              <section id="anatomy" className="py-20 bg-stone-50">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                  <div className="text-center mb-16">
+                    <h2 className="text-3xl md:text-4xl font-bold text-stone-900 mb-4 font-serif">The Anatomy of a Glue Gun</h2>
+                    <p className="text-lg text-stone-600 max-w-2xl mx-auto">
+                      Understanding the thermal and mechanical process is the first step to solving the stringing problem.
+                    </p>
+                  </div>
+                  <GlueGunAnatomy />
+                </div>
+              </section>
+              <section id="physics" className="py-20 bg-white">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                  <div className="text-center mb-16">
+                    <h2 className="text-3xl md:text-4xl font-bold text-stone-900 mb-4 font-serif">The Physics of Stringing</h2>
+                    <p className="text-lg text-stone-600 max-w-2xl mx-auto">
+                      Why does glue string? It comes down to viscoelasticity, capillary action, and the Deborah number.
+                    </p>
+                  </div>
+                  <PhysicsExplainer />
+                </div>
+              </section>
+              <section id="data" className="py-20 bg-stone-900 text-stone-100">
+                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                  <div className="md:flex md:items-start md:space-x-12">
+                    <div className="md:w-1/3 mb-10 md:mb-0">
+                      <h2 className="text-3xl font-bold text-white mb-6 font-serif border-l-4 border-glue-500 pl-4">Viscosity & Temperature</h2>
+                      <p className="text-stone-400 mb-6 leading-relaxed">
+                        Hot melt adhesives (HMAs) are thermoplastics. Their viscosity drops exponentially with temperature, following an Arrhenius-like relationship.
+                      </p>
+                      <p className="text-stone-400 mb-6 leading-relaxed">
+                        <strong>The Danger Zone:</strong> When glue is too cool (below 170°C for many consumer sticks), it retains high elasticity, leading to long strings. When too hot (>210°C), it may drip excessively or degrade.
+                      </p>
+                      <div className="bg-stone-800 p-6 rounded-lg border border-stone-700">
+                        <h4 className="font-semibold text-glue-400 mb-2">Key Variable: Deborah Number (De)</h4>
+                        <p className="text-sm text-stone-400 italic mb-2">De = Relaxation Time / Observation Time</p>
+                        <p className="text-sm text-stone-300">
+                          High De (fast pulling) makes the glue act like a solid rubber band (snap back or string). Low De (slow pulling) allows it to flow like a liquid (break cleanly).
+                        </p>
+                      </div>
+                    </div>
+                    <div className="md:w-2/3">
+                      <ViscosityChart />
+                    </div>
+                  </div>
+                 </div>
+              </section>
+              <section id="ask-ai" className="py-20 bg-glue-50">
+                <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+                  <div className="text-center mb-10">
+                    <h2 className="text-3xl font-bold text-stone-900 mb-4 font-serif">Ask the Rheologist</h2>
+                    <p className="text-stone-600">
+                      Powered by Gemini 2.5 Flash. Ask specifically about "necking failures", "viscoelasticity", or practical tips to stop stringing.
+                    </p>
+                  </div>
+                  <AiRheologist />
+                </div>
+              </section>
+            </main>
+            <Footer />
+          </div>
+        );
+      };
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
   </body>
 </html>
